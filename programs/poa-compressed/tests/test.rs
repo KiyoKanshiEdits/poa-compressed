@@ -9,67 +9,88 @@ use light_sdk::{
     address::v1::derive_address,
     instruction::{account_meta::CompressedAccountMeta, PackedAccounts, SystemAccountMetaConfig},
 };
-use poa_compressed::{CounterCompressedAccount};
+use poa_compressed::ComputeReceipt;
 use solana_sdk::{
+    compute_budget::ComputeBudgetInstruction,
     instruction::{AccountMeta, Instruction},
     signature::{Keypair, Signature, Signer},
 };
 
 #[tokio::test]
-async fn test_counter_program() {
-    let config = ProgramTestConfig::new(true, Some(vec![("poa_compressed", poa_compressed::ID)]));
+async fn test_issue_receipt() {
+    let config = ProgramTestConfig::new(false, Some(vec![("poa_compressed", poa_compressed::ID)]));
     let mut rpc = LightProgramTest::new(config).await.unwrap();
     let payer = rpc.get_payer().insecure_clone();
+
+    let receipt_id: [u8; 16] = [1u8; 16];
+    let model_hash: [u8; 32] = [2u8; 32];
+    let input_hash: [u8; 32] = [3u8; 32];
+    let output_hash: [u8; 32] = [4u8; 32];
+    let parent_receipt_hash: [u8; 32] = [0u8; 32];
 
     let address_tree_info = rpc.get_address_tree_v1();
 
     let (address, _) = derive_address(
-        &[b"counter", payer.pubkey().as_ref()],
+        &[b"receipt", payer.pubkey().as_ref(), &receipt_id],
         &address_tree_info.tree,
         &poa_compressed::ID,
     );
 
-    // Test 1: Create counter
-    create_counter(&mut rpc, &payer, &address)
+    // Test 1: Issue a receipt
+    issue_receipt(
+        &mut rpc,
+        &payer,
+        &address,
+        receipt_id,
+        model_hash,
+        input_hash,
+        output_hash,
+        parent_receipt_hash,
+    )
+    .await
+    .unwrap();
+
+    // Verify it was created
+    let receipt = get_receipt(&mut rpc, address).await;
+    assert_eq!(receipt.agent, payer.pubkey());
+    assert_eq!(receipt.receipt_id, receipt_id);
+    assert_eq!(receipt.model_hash, model_hash);
+    assert_eq!(receipt.input_hash, input_hash);
+    assert_eq!(receipt.output_hash, output_hash);
+    assert_eq!(receipt.parent_receipt_hash, parent_receipt_hash);
+    assert!(receipt.is_valid);
+
+    // Test 2: Invalidate the receipt
+    let account = get_compressed_account(&mut rpc, address).await;
+    invalidate_receipt(&mut rpc, &payer, account, &receipt)
         .await
         .unwrap();
 
-    // Check that it was created correctly
-    let counter = get_counter(&mut rpc, address).await;
-    assert_eq!(counter.owner, payer.pubkey());
-    assert_eq!(counter.counter, 0);
+    // Verify it was invalidated
+    let receipt = get_receipt(&mut rpc, address).await;
+    assert!(!receipt.is_valid);
 
-    // Test 2: Increment counter
+    // Test 3: Close the invalidated receipt
     let account = get_compressed_account(&mut rpc, address).await;
-    increment_counter(&mut rpc, &payer, account).await.unwrap();
+    let receipt_data = get_receipt(&mut rpc, address).await;
+    close_receipt(&mut rpc, &payer, account, &receipt_data)
+        .await
+        .unwrap();
 
-    // Check that it was incremented correctly
-    let counter = get_counter(&mut rpc, address).await;
-    assert_eq!(counter.counter, 1);
-
-    // Test 3: Increment again
-    let account = get_compressed_account(&mut rpc, address).await;
-    increment_counter(&mut rpc, &payer, account).await.unwrap();
-
-    // Check that it was incremented again
-    let counter = get_counter(&mut rpc, address).await;
-    assert_eq!(counter.counter, 2);
-
-    // Test 4: Delete counter
-    let account = get_compressed_account(&mut rpc, address).await;
-    delete_counter(&mut rpc, &payer, account).await.unwrap();
-
-    // Check that it was deleted
-    let result = rpc
-        .get_compressed_account(address, None)
-        .await;
+    // Verify it was deleted
+    let result = rpc.get_compressed_account(address, None).await;
     assert!(result.is_err() || result.unwrap().value.data.is_none());
 }
 
-async fn create_counter(
+async fn issue_receipt(
     rpc: &mut LightProgramTest,
     payer: &Keypair,
     address: &[u8; 32],
+    receipt_id: [u8; 16],
+    model_hash: [u8; 32],
+    input_hash: [u8; 32],
+    output_hash: [u8; 32],
+    parent_receipt_hash: [u8; 32],
 ) -> Result<Signature, RpcError> {
     let config = SystemAccountMetaConfig::new(poa_compressed::ID);
     let mut remaining_accounts = PackedAccounts::default();
@@ -98,6 +119,8 @@ async fn create_counter(
 
     let (remaining_accounts, _, _) = remaining_accounts.to_account_metas();
 
+    let compute_ix = ComputeBudgetInstruction::set_compute_unit_limit(1_000_000);
+
     let instruction = Instruction {
         program_id: poa_compressed::ID,
         accounts: [
@@ -107,28 +130,34 @@ async fn create_counter(
         .concat(),
         data: {
             use anchor_lang::InstructionData;
-            poa_compressed::instruction::Create {
+            poa_compressed::instruction::IssueReceipt {
                 proof: rpc_result.proof,
                 address_tree_info: packed_accounts.address_trees[0],
                 output_merkle_tree_index: output_tree_index,
+                receipt_id,
+                model_hash,
+                input_hash,
+                output_hash,
+                parent_receipt_hash,
             }
             .data()
         },
     };
 
-    rpc.create_and_send_transaction(&[instruction], &payer.pubkey(), &[payer])
+    rpc.create_and_send_transaction(&[compute_ix, instruction], &payer.pubkey(), &[payer])
         .await
 }
 
-async fn increment_counter(
+async fn invalidate_receipt(
     rpc: &mut LightProgramTest,
     payer: &Keypair,
     compressed_account: CompressedAccount,
+    receipt: &ComputeReceipt,
 ) -> Result<Signature, RpcError> {
     let mut remaining_accounts = PackedAccounts::default();
-
     let config = SystemAccountMetaConfig::new(poa_compressed::ID);
     remaining_accounts.add_system_accounts(config);
+
     let hash = compressed_account.hash;
 
     let rpc_result = rpc
@@ -143,10 +172,7 @@ async fn increment_counter(
 
     let (remaining_accounts, _, _) = remaining_accounts.to_account_metas();
 
-    let counter_account = CounterCompressedAccount::deserialize(
-        &mut compressed_account.data.as_ref().unwrap().data.as_slice(),
-    )
-    .unwrap();
+    let compute_ix = ComputeBudgetInstruction::set_compute_unit_limit(1_000_000);
 
     let instruction = Instruction {
         program_id: poa_compressed::ID,
@@ -157,32 +183,39 @@ async fn increment_counter(
         .concat(),
         data: {
             use anchor_lang::InstructionData;
-            poa_compressed::instruction::Increment {
+            poa_compressed::instruction::InvalidateReceipt {
                 proof: rpc_result.proof,
-                counter_value: counter_account.counter,
                 account_meta: CompressedAccountMeta {
                     tree_info: packed_tree_accounts.packed_tree_infos[0],
                     address: compressed_account.address.unwrap(),
                     output_state_tree_index: packed_tree_accounts.output_tree_index,
                 },
+                receipt_id: receipt.receipt_id,
+                model_hash: receipt.model_hash,
+                input_hash: receipt.input_hash,
+                output_hash: receipt.output_hash,
+                parent_receipt_hash: receipt.parent_receipt_hash,
+                slot: receipt.slot,
+                receipt_hash: receipt.receipt_hash,
             }
             .data()
         },
     };
 
-    rpc.create_and_send_transaction(&[instruction], &payer.pubkey(), &[payer])
+    rpc.create_and_send_transaction(&[compute_ix, instruction], &payer.pubkey(), &[payer])
         .await
 }
 
-async fn delete_counter(
+async fn close_receipt(
     rpc: &mut LightProgramTest,
     payer: &Keypair,
     compressed_account: CompressedAccount,
+    receipt: &ComputeReceipt,
 ) -> Result<Signature, RpcError> {
     let mut remaining_accounts = PackedAccounts::default();
-
     let config = SystemAccountMetaConfig::new(poa_compressed::ID);
     remaining_accounts.add_system_accounts(config);
+
     let hash = compressed_account.hash;
 
     let rpc_result = rpc
@@ -197,10 +230,7 @@ async fn delete_counter(
 
     let (remaining_accounts, _, _) = remaining_accounts.to_account_metas();
 
-    let counter_account = CounterCompressedAccount::deserialize(
-        &mut compressed_account.data.as_ref().unwrap().data.as_slice(),
-    )
-    .unwrap();
+    let compute_ix = ComputeBudgetInstruction::set_compute_unit_limit(1_000_000);
 
     let instruction = Instruction {
         program_id: poa_compressed::ID,
@@ -211,20 +241,27 @@ async fn delete_counter(
         .concat(),
         data: {
             use anchor_lang::InstructionData;
-            poa_compressed::instruction::Delete {
+            poa_compressed::instruction::CloseReceipt {
                 proof: rpc_result.proof,
-                counter_value: counter_account.counter,
                 account_meta: CompressedAccountMeta {
                     tree_info: packed_tree_accounts.packed_tree_infos[0],
                     address: compressed_account.address.unwrap(),
                     output_state_tree_index: packed_tree_accounts.output_tree_index,
                 },
+                receipt_id: receipt.receipt_id,
+                model_hash: receipt.model_hash,
+                input_hash: receipt.input_hash,
+                output_hash: receipt.output_hash,
+                parent_receipt_hash: receipt.parent_receipt_hash,
+                slot: receipt.slot,
+                receipt_hash: receipt.receipt_hash,
+                is_valid: receipt.is_valid,
             }
             .data()
         },
     };
 
-    rpc.create_and_send_transaction(&[instruction], &payer.pubkey(), &[payer])
+    rpc.create_and_send_transaction(&[compute_ix, instruction], &payer.pubkey(), &[payer])
         .await
 }
 
@@ -238,11 +275,11 @@ async fn get_compressed_account(
         .value
 }
 
-async fn get_counter(
+async fn get_receipt(
     rpc: &mut LightProgramTest,
     address: [u8; 32],
-) -> CounterCompressedAccount {
+) -> ComputeReceipt {
     let account = get_compressed_account(rpc, address).await;
     let data = &account.data.as_ref().unwrap().data;
-    CounterCompressedAccount::deserialize(&mut &data[..]).unwrap()
+    ComputeReceipt::deserialize(&mut &data[..]).unwrap()
 }

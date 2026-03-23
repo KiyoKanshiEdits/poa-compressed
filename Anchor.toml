@@ -5,7 +5,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-poa_compressed = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
+poa_compressed = "6oWV3RpNUrrbb2NLcWMFaBEcrVjZ5fK4EAvQUcKYTs1N"
 
 [registry]
 url = "https://api.apr.dev"
@@ -13,3 +13,6 @@ url = "https://api.apr.dev"
 [provider]
 cluster = "Localnet"
 wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "npx ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"

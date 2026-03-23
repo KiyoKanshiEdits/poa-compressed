@@ -8,10 +8,10 @@ use light_sdk::{
     LightDiscriminator, LightHasher,
 };
 
-declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
+declare_id!("6oWV3RpNUrrbb2NLcWMFaBEcrVjZ5fK4EAvQUcKYTs1N");
 
 pub const LIGHT_CPI_SIGNER: CpiSigner =
-    derive_light_cpi_signer!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
+    derive_light_cpi_signer!("6oWV3RpNUrrbb2NLcWMFaBEcrVjZ5fK4EAvQUcKYTs1N");
 
 #[program]
 pub mod poa_compressed {
@@ -51,9 +51,9 @@ pub mod poa_compressed {
         data.extend_from_slice(&output_hash);
         data.extend_from_slice(&parent_receipt_hash);
         data.extend_from_slice(&slot.to_le_bytes());
-        let receipt_hash = solana_program::hash::hash(&data).to_bytes();
+        let receipt_hash = anchor_lang::solana_program::hash::hash(&data).to_bytes();
         let program_id = crate::ID.into();
-        let mut receipt = LightAccount::<\'_, ComputeReceipt>::new_init(
+        let mut receipt = LightAccount::<'_, ComputeReceipt>::new_init(
             &program_id,
             Some(address),
             output_merkle_tree_index,
@@ -91,7 +91,7 @@ pub mod poa_compressed {
         receipt_hash: [u8; 32],
     ) -> Result<()> {
         let agent = ctx.accounts.signer.key();
-        let mut receipt = LightAccount::<\'_, ComputeReceipt>::new_mut(
+        let mut receipt = LightAccount::<'_, ComputeReceipt>::new_mut(
             &crate::ID,
             &account_meta,
             ComputeReceipt {
@@ -138,8 +138,9 @@ pub mod poa_compressed {
         is_valid: bool,
     ) -> Result<()> {
         let agent = ctx.accounts.signer.key();
-        let receipt = LightAccount::<\'_, ComputeReceipt>::new_close(
-            &crate::ID.into(),
+        let program_id = crate::ID.into();
+        let receipt = LightAccount::<'_, ComputeReceipt>::new_close(
+            &program_id,
             &account_meta,
             ComputeReceipt {
                 agent,
@@ -175,20 +176,26 @@ pub mod poa_compressed {
 pub struct ComputeReceipt {
     #[hash]
     pub agent: Pubkey,
+    #[hash]
     pub receipt_id: [u8; 16],
+    #[hash]
     pub model_hash: [u8; 32],
+    #[hash]
     pub input_hash: [u8; 32],
+    #[hash]
     pub output_hash: [u8; 32],
+    #[hash]
     pub parent_receipt_hash: [u8; 32],
     pub slot: u64,
+    #[hash]
     pub receipt_hash: [u8; 32],
     pub is_valid: bool,
 }
 
 #[derive(Accounts)]
-pub struct GenericAnchorAccounts<\'info> {
+pub struct GenericAnchorAccounts<'info> {
     #[account(mut)]
-    pub signer: Signer<\'info>,
+    pub signer: Signer<'info>,
 }
 
 #[error_code]
