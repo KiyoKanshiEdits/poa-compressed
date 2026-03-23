@@ -1,7 +1,6 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program, web3, BN } from "@coral-xyz/anchor";
-import { PoaCompressed } from "../../target/types/poa_compressed";
-import idl from "../../target/idl/poa_compressed.json";
+import idl from "./idl.json";
 import {
   bn,
   CompressedAccountWithMerkleContext,
@@ -45,7 +44,7 @@ export interface IssueReceiptParams {
 
 export class PoA {
   readonly rpc: Rpc;
-  readonly program: Program<PoaCompressed>;
+  readonly program: Program;
   readonly coder: anchor.BorshCoder;
   readonly agentKeypair: web3.Keypair;
 
@@ -63,7 +62,7 @@ export class PoA {
       new anchor.Wallet(config.agentKeypair),
       { commitment: "confirmed" },
     );
-    this.program = new Program<PoaCompressed>(
+    this.program = new Program(
       idl as any,
       provider,
     );

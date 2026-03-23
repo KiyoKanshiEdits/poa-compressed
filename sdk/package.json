@@ -1,0 +1,33 @@
+{
+  "name": "@proof-of-agent/sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for the Proof of Agent (PoA) compressed program on Solana using Light Protocol ZK compression",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "solana",
+    "proof-of-agent",
+    "poa",
+    "zk-compression",
+    "light-protocol",
+    "compressed-accounts",
+    "anchor"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KiyoKanshiEdits/poa-compressed"
+  },
+  "dependencies": {
+    "@coral-xyz/anchor": "^0.31.1",
+    "@lightprotocol/stateless.js": "^0.22.0",
+    "@solana/web3.js": "^1.95.0"
+  }
+}
