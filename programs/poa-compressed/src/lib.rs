@@ -28,6 +28,10 @@ pub mod poa_compressed {
         output_hash: [u8; 32],
         parent_receipt_hash: [u8; 32],
     ) -> Result<()> {
+        require!(model_hash != [0u8; 32], PoaError::EmptyHash);
+        require!(input_hash != [0u8; 32], PoaError::EmptyHash);
+        require!(output_hash != [0u8; 32], PoaError::EmptyHash);
+
         let light_cpi_accounts = CpiAccounts::new(
             ctx.accounts.signer.as_ref(),
             ctx.remaining_accounts,
@@ -74,7 +78,12 @@ pub mod poa_compressed {
         );
         cpi.invoke_light_system_program(light_cpi_accounts)
             .map_err(ProgramError::from)?;
-        msg!("PoA: Compressed receipt issued by {} at slot {}", agent, slot);
+        emit!(ReceiptIssued {
+            receipt_hash,
+            agent,
+            model_hash,
+            slot,
+        });
         Ok(())
     }
 
@@ -120,7 +129,11 @@ pub mod poa_compressed {
         );
         cpi.invoke_light_system_program(light_cpi_accounts)
             .map_err(ProgramError::from)?;
-        msg!("PoA: Compressed receipt invalidated by {}", agent);
+        emit!(ReceiptInvalidated {
+            receipt_hash,
+            agent,
+            slot,
+        });
         Ok(())
     }
 
@@ -186,6 +199,7 @@ pub struct ComputeReceipt {
     pub output_hash: [u8; 32],
     #[hash]
     pub parent_receipt_hash: [u8; 32],
+    #[hash]
     pub slot: u64,
     #[hash]
     pub receipt_hash: [u8; 32],
@@ -198,8 +212,25 @@ pub struct GenericAnchorAccounts<'info> {
     pub signer: Signer<'info>,
 }
 
+#[event]
+pub struct ReceiptIssued {
+    pub receipt_hash: [u8; 32],
+    pub agent: Pubkey,
+    pub model_hash: [u8; 32],
+    pub slot: u64,
+}
+
+#[event]
+pub struct ReceiptInvalidated {
+    pub receipt_hash: [u8; 32],
+    pub agent: Pubkey,
+    pub slot: u64,
+}
+
 #[error_code]
 pub enum PoaError {
     #[msg("Receipt has already been invalidated")]
     AlreadyInvalidated,
+    #[msg("Hash fields cannot be all zeros")]
+    EmptyHash,
 }
