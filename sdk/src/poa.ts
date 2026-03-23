@@ -317,16 +317,17 @@ export class PoA {
       "ComputeReceipt",
       account.data.data,
     );
+    // BorshCoder uses snake_case field names matching the Rust struct
     return {
       agent: decoded.agent,
-      receiptId: Uint8Array.from(decoded.receiptId),
-      modelHash: Uint8Array.from(decoded.modelHash),
-      inputHash: Uint8Array.from(decoded.inputHash),
-      outputHash: Uint8Array.from(decoded.outputHash),
-      parentReceiptHash: Uint8Array.from(decoded.parentReceiptHash),
+      receiptId: Uint8Array.from(decoded.receipt_id),
+      modelHash: Uint8Array.from(decoded.model_hash),
+      inputHash: Uint8Array.from(decoded.input_hash),
+      outputHash: Uint8Array.from(decoded.output_hash),
+      parentReceiptHash: Uint8Array.from(decoded.parent_receipt_hash),
       slot: decoded.slot,
-      receiptHash: Uint8Array.from(decoded.receiptHash),
-      isValid: decoded.isValid,
+      receiptHash: Uint8Array.from(decoded.receipt_hash),
+      isValid: decoded.is_valid,
     };
   }
 }
