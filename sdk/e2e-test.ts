@@ -2,7 +2,11 @@ import { PoA } from "./src/poa";
 import { Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { createRpc, sleep } from "@lightprotocol/stateless.js";
 
-const RPC_URL = "https://devnet.helius-rpc.com?api-key=YOUR_HELIUS_KEY";
+const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
+if (!HELIUS_API_KEY) {
+  throw new Error("HELIUS_API_KEY environment variable is required");
+}
+const RPC_URL = `https://devnet.helius-rpc.com?api-key=${HELIUS_API_KEY}`;
 const COMPRESSION_RPC_URL = RPC_URL;
 const PROVER_URL = "https://prover.helius.dev";
 
